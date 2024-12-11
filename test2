@@ -1,0 +1,175 @@
+-- Create Student table
+-- Relationships:
+-- Student-LibraryBook (M:N): through BookBorrowing
+-- Student-Grade (1:N): can receive many grades
+-- Student-Attendance (1:N): can have many attendance records
+-- Student-Course (M:N): through StudentCourse
+CREATE TABLE Student (
+    StudentID INT PRIMARY KEY UNIQUE,
+    FirstName VARCHAR(50) NOT NULL,
+    LastName VARCHAR(50) NOT NULL,
+    DoB DATE NOT NULL,
+    Email VARCHAR(100) UNIQUE NOT NULL,
+    PhoneNo VARCHAR(15),
+    Address TEXT,
+    EnrollmentDate DATE NOT NULL
+);
+
+-- Create Teacher table
+-- Relationships:
+-- Teacher-Course (1:N): can teach many courses
+-- Teacher-ExamSchedule (1:N): can supervise many exams
+-- Teacher-Schedule (1:N): can have many schedule entries
+-- Teacher-Event (1:N): can organize many events
+CREATE TABLE Teacher (
+    TeacherID INT PRIMARY KEY UNIQUE,
+    Fname VARCHAR(50) NOT NULL,
+    Lname VARCHAR(50) NOT NULL,
+    PhoneNum VARCHAR(15),
+    Temail VARCHAR(100) UNIQUE NOT NULL,
+    HireDate DATE NOT NULL,
+    Dept VARCHAR(50) NOT NULL
+);
+
+-- Create Course table
+-- Relationships:
+-- Course-Teacher (N:1): each course has one teacher
+-- Course-Student (M:N): through StudentCourse
+-- Course-Attendance (1:N): can have many attendance records
+-- Course-ExamSchedule (1:N): can have many exams
+CREATE TABLE Course (
+    CourseID INT PRIMARY KEY UNIQUE,
+    CourseName VARCHAR(100) NOT NULL,
+    CourseDesc TEXT,
+    Credits INT NOT NULL CHECK (Credits > 0),
+    Department VARCHAR(50) NOT NULL,
+    TeacherID INT NOT NULL,
+    CONSTRAINT lectures FOREIGN KEY (TeacherID) REFERENCES Teacher(TeacherID)
+);
+CREATE INDEX idx_course_teacher ON Course(TeacherID);
+
+-- Create LibraryBook table
+-- Relationships:
+-- LibraryBook-Student (M:N): through BookBorrowing
+CREATE TABLE LibraryBook (
+    BookID INT PRIMARY KEY UNIQUE,
+    Title VARCHAR(100) NOT NULL,
+    Author VARCHAR(100) NOT NULL,
+    ISBN VARCHAR(13) NOT NULL UNIQUE,
+    PublishedYear INT CHECK (PublishedYear > 1900),
+    Status ENUM('available', 'borrowed', 'maintenance', 'lost') DEFAULT 'available' NOT NULL
+);
+
+-- Create Grade table
+-- Relationships:
+-- Grade-Student (N:1): each grade belongs to one student
+CREATE TABLE Grade (
+    GradeID INT PRIMARY KEY UNIQUE,
+    GradeValue DECIMAL(5,2) NOT NULL CHECK (GradeValue >= 0 AND GradeValue <= 100),
+    DateAssigned DATE NOT NULL,
+    Comments TEXT,
+    StudentID INT NOT NULL,
+    CONSTRAINT receives FOREIGN KEY (StudentID) REFERENCES Student(StudentID)
+);
+CREATE INDEX idx_grade_student ON Grade(StudentID);
+
+-- Create Attendance table
+-- Relationships: 
+-- Attendance-Student (N:1): each attendance record belongs to one student
+-- Attendance-Course (N:1): each attendance record belongs to one course
+CREATE TABLE Attendance (
+    AttendanceID INT PRIMARY KEY UNIQUE,
+    Date DATE NOT NULL,
+    Status ENUM('present', 'absent', 'late', 'excused') NOT NULL,
+    Remarks TEXT,
+    StudentID INT NOT NULL,
+    CourseID INT NOT NULL,
+    CONSTRAINT attends FOREIGN KEY (StudentID) REFERENCES Student(StudentID),
+    CONSTRAINT has_attendance FOREIGN KEY (CourseID) REFERENCES Course(CourseID)
+);
+CREATE INDEX idx_attendance_student ON Attendance(StudentID);
+CREATE INDEX idx_attendance_course ON Attendance(CourseID);
+
+-- Create ExamSchedule table
+-- Relationships:
+-- ExamSchedule-Course (N:1): each exam belongs to one course
+-- ExamSchedule-Teacher (N:1): each exam has one supervisor
+CREATE TABLE ExamSchedule (
+    ExamID INT PRIMARY KEY UNIQUE,
+    ExamType ENUM('midterm', 'final', 'quiz', 'makeup') NOT NULL,
+    ExamDate DATETIME NOT NULL,
+    Duration INT NOT NULL CHECK (Duration > 0),
+    RoomNumber VARCHAR(20) NOT NULL,
+    TotalPoints INT NOT NULL CHECK (TotalPoints > 0),
+    CourseID INT NOT NULL,
+    SupervisorID INT NOT NULL,
+    CONSTRAINT has_exam FOREIGN KEY (CourseID) REFERENCES Course(CourseID),
+    CONSTRAINT supervises FOREIGN KEY (SupervisorID) REFERENCES Teacher(TeacherID)
+);
+CREATE INDEX idx_exam_course ON ExamSchedule(CourseID);
+CREATE INDEX idx_exam_supervisor ON ExamSchedule(SupervisorID);
+
+-- Create Event table
+-- Relationships:
+-- Event-Teacher (N:1): each event is organized by one teacher
+CREATE TABLE Event (
+    EventID INT PRIMARY KEY UNIQUE,
+    EventName VARCHAR(100) NOT NULL,
+    Location VARCHAR(100) NOT NULL,
+    Description TEXT,
+    EventDate DATETIME NOT NULL,
+    Organizer VARCHAR(100) NOT NULL,
+    TeacherID INT NOT NULL,
+    CONSTRAINT organizes FOREIGN KEY (TeacherID) REFERENCES Teacher(TeacherID)
+);
+CREATE INDEX idx_event_teacher ON Event(TeacherID);
+
+-- Create Schedule table
+-- Relationships:
+-- Schedule-Teacher (N:1): each schedule entry belongs to one teacher
+CREATE TABLE Schedule (
+    ScheduleID INT PRIMARY KEY UNIQUE,
+    DoW ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday') NOT NULL,
+    StartTime TIME NOT NULL,
+    FinishTime TIME NOT NULL,
+    TeacherID INT NOT NULL,
+    CONSTRAINT teaches FOREIGN KEY (TeacherID) REFERENCES Teacher(TeacherID),
+    CHECK (StartTime < FinishTime)
+);
+CREATE INDEX idx_schedule_teacher ON Schedule(TeacherID);
+
+-- Create junction tables for many-to-many relationships
+
+-- BookBorrowing junction table
+-- Relationship: Student-LibraryBook (M:N)
+-- One student can borrow many books
+-- One book can be borrowed by many students (over time)
+CREATE TABLE BookBorrowing (
+    BorrowID INT PRIMARY KEY UNIQUE,
+    StudentID INT NOT NULL,
+    BookID INT NOT NULL,
+    BorrowDate DATE NOT NULL,
+    ReturnDate DATE,
+    Status ENUM('borrowed', 'returned', 'overdue', 'lost') NOT NULL DEFAULT 'borrowed',
+    CONSTRAINT borrows FOREIGN KEY (StudentID) REFERENCES Student(StudentID),
+    CONSTRAINT is_borrowed FOREIGN KEY (BookID) REFERENCES LibraryBook(BookID),
+    CHECK (BorrowDate <= ReturnDate)
+);
+CREATE INDEX idx_borrowing_student ON BookBorrowing(StudentID);
+CREATE INDEX idx_borrowing_book ON BookBorrowing(BookID);
+
+-- StudentCourse junction table
+-- Relationship: Student-Course (M:N)
+-- One student can take many courses
+-- One course can have many students
+CREATE TABLE StudentCourse (
+    StudentID INT NOT NULL,
+    CourseID INT NOT NULL,
+    EnrollmentDate DATE NOT NULL,
+    Status ENUM('active', 'completed', 'dropped', 'failed') NOT NULL DEFAULT 'active',
+    PRIMARY KEY (StudentID, CourseID),
+    CONSTRAINT takes FOREIGN KEY (StudentID) REFERENCES Student(StudentID),
+    CONSTRAINT is_taken FOREIGN KEY (CourseID) REFERENCES Course(CourseID)
+);
+CREATE INDEX idx_studentcourse_student ON StudentCourse(StudentID);
+CREATE INDEX idx_studentcourse_course ON StudentCourse(CourseID);
